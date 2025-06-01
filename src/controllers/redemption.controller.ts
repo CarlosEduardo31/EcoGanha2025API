@@ -26,9 +26,9 @@ export const redeemOffer = async (req: Request, res: Response, next: NextFunctio
 
     const partnerRecordId = partners[0].id;
 
-    // Verificar se a oferta pertence a este parceiro
+    // Verificar se a oferta pertence a este parceiro e se está disponível
     const [offers] = await db.execute<RowDataPacket[]>(
-      'SELECT id, title, points FROM offers WHERE id = ? AND partner_id = ?',
+      'SELECT id, title, points, quantity FROM offers WHERE id = ? AND partner_id = ?',
       [offerId, partnerRecordId]
     );
 
@@ -37,6 +37,11 @@ export const redeemOffer = async (req: Request, res: Response, next: NextFunctio
     }
 
     const offer = offers[0];
+
+    // Verificar se ainda há quantidade disponível
+    if (offer.quantity <= 0) {
+      throw new AppError('Esta oferta não está mais disponível (estoque esgotado)', 400);
+    }
 
     // Verificar se o usuário tem pontos suficientes
     const [users] = await db.execute<RowDataPacket[]>(
@@ -58,6 +63,16 @@ export const redeemOffer = async (req: Request, res: Response, next: NextFunctio
     await db.query('START TRANSACTION');
 
     try {
+      // Verificar novamente a quantidade dentro da transação (evitar condições de corrida)
+      const [offerCheck] = await db.execute<RowDataPacket[]>(
+        'SELECT quantity FROM offers WHERE id = ? FOR UPDATE',
+        [offerId]
+      );
+
+      if (offerCheck[0].quantity <= 0) {
+        throw new AppError('Esta oferta acabou de ficar indisponível', 400);
+      }
+
       // Registrar o resgate
       const [result] = await db.execute<ResultSetHeader>(
         'INSERT INTO redemptions (user_id, offer_id, points) VALUES (?, ?, ?)',
@@ -70,6 +85,12 @@ export const redeemOffer = async (req: Request, res: Response, next: NextFunctio
       await db.execute(
         'UPDATE users SET points = points - ? WHERE id = ?',
         [offer.points, userId]
+      );
+
+      // Decrementar a quantidade da oferta
+      await db.execute(
+        'UPDATE offers SET quantity = quantity - 1 WHERE id = ?',
+        [offerId]
       );
 
       // Commit da transação
@@ -88,6 +109,7 @@ export const redeemOffer = async (req: Request, res: Response, next: NextFunctio
           r.created_at as date, 
           o.title, 
           o.description,
+          o.quantity as remainingQuantity,
           u.name as partnerName
         FROM 
           redemptions r
