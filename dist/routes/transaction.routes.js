@@ -1,0 +1,10 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const transaction_controller_1 = require("../controllers/transaction.controller");
+const auth_1 = require("../middlewares/auth");
+const router = (0, express_1.Router)();
+router.post('/', auth_1.auth, (0, auth_1.checkUserType)(['ecoponto']), transaction_controller_1.addRecycleTransaction);
+router.get('/eco-point/:ecoPointId', auth_1.auth, (0, auth_1.checkUserType)(['ecoponto']), transaction_controller_1.getEcoPointTransactions);
+router.get('/eco-point/:ecoPointId/stats', auth_1.auth, (0, auth_1.checkUserType)(['ecoponto']), transaction_controller_1.getEcoPointStats);
+exports.default = router;

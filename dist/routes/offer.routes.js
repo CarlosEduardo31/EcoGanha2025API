@@ -1,0 +1,12 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const offer_controller_1 = require("../controllers/offer.controller");
+const auth_1 = require("../middlewares/auth");
+const router = (0, express_1.Router)();
+router.get('/', offer_controller_1.getAllOffers);
+router.get('/partner', auth_1.auth, (0, auth_1.checkUserType)(['patrocinador']), offer_controller_1.getPartnerOffers);
+router.post('/', auth_1.auth, (0, auth_1.checkUserType)(['patrocinador']), offer_controller_1.addOffer);
+router.patch('/:offerId', auth_1.auth, (0, auth_1.checkUserType)(['patrocinador']), offer_controller_1.updateOffer);
+router.delete('/:offerId', auth_1.auth, (0, auth_1.checkUserType)(['patrocinador']), offer_controller_1.deleteOffer);
+exports.default = router;

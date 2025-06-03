@@ -1,0 +1,13 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const ecoPoint_controller_1 = require("../controllers/ecoPoint.controller");
+const auth_1 = require("../middlewares/auth");
+const router = (0, express_1.Router)();
+router.get('/', ecoPoint_controller_1.getAllEcoPoints);
+router.get('/:ecoPointId', ecoPoint_controller_1.getEcoPoint);
+router.post('/', auth_1.auth, (0, auth_1.checkUserType)(['admin']), ecoPoint_controller_1.createEcoPoint);
+router.patch('/:ecoPointId', auth_1.auth, (0, auth_1.checkUserType)(['admin']), ecoPoint_controller_1.updateEcoPoint);
+router.delete('/:ecoPointId', auth_1.auth, (0, auth_1.checkUserType)(['admin']), ecoPoint_controller_1.deleteEcoPoint);
+router.get('/operator', auth_1.auth, (0, auth_1.checkUserType)(['ecoponto']), ecoPoint_controller_1.getOperatorEcoPoint);
+exports.default = router;

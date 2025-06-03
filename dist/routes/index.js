@@ -1,0 +1,34 @@
+"use strict";
+var __importDefault = (this && this.__importDefault) || function (mod) {
+    return (mod && mod.__esModule) ? mod : { "default": mod };
+};
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const auth_routes_1 = __importDefault(require("./auth.routes"));
+const user_routes_1 = __importDefault(require("./user.routes"));
+const ecoPoint_routes_1 = __importDefault(require("./ecoPoint.routes"));
+const material_routes_1 = __importDefault(require("./material.routes"));
+const partner_routes_1 = __importDefault(require("./partner.routes"));
+const offer_routes_1 = __importDefault(require("./offer.routes"));
+const transaction_routes_1 = __importDefault(require("./transaction.routes"));
+const redemption_routes_1 = __importDefault(require("./redemption.routes"));
+const router = (0, express_1.Router)();
+// Log para depuração
+console.log('Registrando rotas: auth');
+router.use('/auth', auth_routes_1.default);
+console.log('Registrando rotas: users');
+router.use('/users', user_routes_1.default);
+console.log('Registrando rotas: eco-points');
+router.use('/eco-points', ecoPoint_routes_1.default);
+console.log('Registrando rotas: materials');
+router.use('/materials', material_routes_1.default);
+console.log('Registrando rotas: partners');
+router.use('/partners', partner_routes_1.default);
+console.log('Registrando rotas: offers');
+router.use('/offers', offer_routes_1.default);
+console.log('Registrando rotas: transactions');
+router.use('/transactions', transaction_routes_1.default);
+console.log('Registrando rotas: redemptions');
+router.use('/redemptions', redemption_routes_1.default);
+console.log('Todas as rotas registradas com sucesso');
+exports.default = router;

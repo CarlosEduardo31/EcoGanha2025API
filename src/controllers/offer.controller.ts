@@ -3,12 +3,40 @@ import db from '../db';
 import { AppError } from '../utils/appError';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
 
+// Utilitário para validar e otimizar imagem base64
+const validateAndOptimizeImage = (imageBase64: string): string | null => {
+  if (!imageBase64) return null;
+  
+  try {
+    // Verificar se é base64 válido
+    const base64Regex = /^data:image\/(jpeg|jpg|png|gif|webp);base64,/;
+    if (!base64Regex.test(imageBase64)) {
+      throw new AppError('Formato de imagem inválido. Use JPEG, PNG, GIF ou WebP.', 400);
+    }
+    
+    // Extrair apenas a parte base64 (sem o prefixo data:image/...)
+    const base64Data = imageBase64.split(',')[1];
+    
+    // Verificar tamanho (máximo 500KB em base64 ≈ 375KB arquivo original)
+    const sizeInBytes = (base64Data.length * 3) / 4;
+    const maxSizeInBytes = 500 * 1024; // 500KB
+    
+    if (sizeInBytes > maxSizeInBytes) {
+      throw new AppError('Imagem muito grande. Máximo permitido: 500KB. Redimensione a imagem.', 400);
+    }
+    
+    return imageBase64;
+  } catch (error) {
+    if (error instanceof AppError) throw error;
+    throw new AppError('Erro ao processar imagem. Verifique o formato.', 400);
+  }
+};
+
 // Obter todas as ofertas de um parceiro
 export const getPartnerOffers = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const partnerId = req.user.id;
 
-    // Buscar o ID do parceiro na tabela partners pelo user_id
     const [partners] = await db.execute<RowDataPacket[]>(
       'SELECT id FROM partners WHERE user_id = ?',
       [partnerId]
@@ -20,7 +48,7 @@ export const getPartnerOffers = async (req: Request, res: Response, next: NextFu
 
     const partnerRecordId = partners[0].id;
 
-    // Buscar ofertas do parceiro
+    // ATUALIZADO: Incluir campo image
     const [rows] = await db.execute<RowDataPacket[]>(
       `SELECT 
         id, 
@@ -28,6 +56,7 @@ export const getPartnerOffers = async (req: Request, res: Response, next: NextFu
         description, 
         points, 
         quantity,
+        image,
         valid_until as validUntil,
         created_at as createdAt,
         updated_at as updatedAt
@@ -53,19 +82,20 @@ export const getPartnerOffers = async (req: Request, res: Response, next: NextFu
 export const addOffer = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const partnerId = req.user.id;
-    const { title, description, points, quantity, validUntil } = req.body;
+    const { title, description, points, quantity, validUntil, image } = req.body;
 
-    // Validar se todos os campos necessários foram fornecidos
+    // Validar campos obrigatórios
     if (!title || !points || !quantity) {
       throw new AppError('Título, pontos e quantidade são obrigatórios', 400);
     }
 
-    // Validar se a quantidade é um número positivo
     if (quantity <= 0) {
       throw new AppError('A quantidade deve ser maior que zero', 400);
     }
 
-    // Buscar o ID do parceiro na tabela partners pelo user_id
+    // Validar e processar imagem (opcional)
+    const processedImage = image ? validateAndOptimizeImage(image) : null;
+
     const [partners] = await db.execute<RowDataPacket[]>(
       'SELECT id FROM partners WHERE user_id = ?',
       [partnerId]
@@ -77,18 +107,19 @@ export const addOffer = async (req: Request, res: Response, next: NextFunction) 
 
     const partnerRecordId = partners[0].id;
 
-    // Inserir nova oferta
+    // ATUALIZADO: Incluir campo image
     const [result] = await db.execute<ResultSetHeader>(
       `INSERT INTO offers 
-        (partner_id, title, description, points, quantity, valid_until) 
+        (partner_id, title, description, points, quantity, image, valid_until) 
       VALUES 
-        (?, ?, ?, ?, ?, ?)`,
+        (?, ?, ?, ?, ?, ?, ?)`,
       [
         partnerRecordId, 
         title, 
         description || null, 
         points, 
         quantity,
+        processedImage,
         validUntil || null
       ]
     );
@@ -103,6 +134,7 @@ export const addOffer = async (req: Request, res: Response, next: NextFunction) 
         description, 
         points, 
         quantity,
+        image,
         valid_until as validUntil,
         created_at as createdAt,
         updated_at as updatedAt
@@ -127,9 +159,8 @@ export const updateOffer = async (req: Request, res: Response, next: NextFunctio
   try {
     const partnerId = req.user.id;
     const { offerId } = req.params;
-    const { title, description, points, quantity, validUntil } = req.body;
+    const { title, description, points, quantity, validUntil, image } = req.body;
 
-    // Buscar o ID do parceiro na tabela partners pelo user_id
     const [partners] = await db.execute<RowDataPacket[]>(
       'SELECT id FROM partners WHERE user_id = ?',
       [partnerId]
@@ -156,7 +187,19 @@ export const updateOffer = async (req: Request, res: Response, next: NextFunctio
       throw new AppError('A quantidade não pode ser negativa', 400);
     }
 
-    // Atualizar oferta
+    // Processar imagem se fornecida
+    let processedImage = undefined;
+    if (image !== undefined) {
+      // Se image é null ou string vazia, remove a imagem
+      if (!image) {
+        processedImage = null;
+      } else {
+        // Valida e processa nova imagem
+        processedImage = validateAndOptimizeImage(image);
+      }
+    }
+
+    // ATUALIZADO: Incluir campo image na atualização
     await db.execute(
       `UPDATE offers 
       SET 
@@ -164,6 +207,7 @@ export const updateOffer = async (req: Request, res: Response, next: NextFunctio
         description = ?, 
         points = ?, 
         quantity = ?,
+        image = COALESCE(?, image),
         valid_until = ? 
       WHERE 
         id = ?`,
@@ -172,6 +216,7 @@ export const updateOffer = async (req: Request, res: Response, next: NextFunctio
         description || null, 
         points, 
         quantity,
+        processedImage,
         validUntil || null, 
         offerId
       ]
@@ -185,6 +230,7 @@ export const updateOffer = async (req: Request, res: Response, next: NextFunctio
         description, 
         points, 
         quantity,
+        image,
         valid_until as validUntil,
         created_at as createdAt,
         updated_at as updatedAt
@@ -204,13 +250,12 @@ export const updateOffer = async (req: Request, res: Response, next: NextFunctio
   }
 };
 
-// Excluir oferta - MELHORADA com informações mais detalhadas
+// Excluir oferta (mantém a lógica anterior)
 export const deleteOffer = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const partnerId = req.user.id;
     const { offerId } = req.params;
 
-    // Buscar o ID do parceiro na tabela partners pelo user_id
     const [partners] = await db.execute<RowDataPacket[]>(
       'SELECT id FROM partners WHERE user_id = ?',
       [partnerId]
@@ -222,7 +267,6 @@ export const deleteOffer = async (req: Request, res: Response, next: NextFunctio
 
     const partnerRecordId = partners[0].id;
 
-    // Verificar se a oferta pertence a este parceiro e buscar detalhes
     const [offers] = await db.execute<RowDataPacket[]>(
       'SELECT id, title FROM offers WHERE id = ? AND partner_id = ?',
       [offerId, partnerRecordId]
@@ -234,7 +278,6 @@ export const deleteOffer = async (req: Request, res: Response, next: NextFunctio
 
     const offer = offers[0];
 
-    // Verificar se a oferta já foi resgatada por algum usuário
     const [redemptions] = await db.execute<RowDataPacket[]>(
       `SELECT COUNT(*) as redemptionCount 
        FROM redemptions 
@@ -252,11 +295,7 @@ export const deleteOffer = async (req: Request, res: Response, next: NextFunctio
       );
     }
 
-    // Excluir oferta
-    await db.execute(
-      'DELETE FROM offers WHERE id = ?',
-      [offerId]
-    );
+    await db.execute('DELETE FROM offers WHERE id = ?', [offerId]);
 
     res.status(204).send();
   } catch (error) {
@@ -269,7 +308,7 @@ export const getAllOffers = async (req: Request, res: Response, next: NextFuncti
   try {
     const today = new Date().toISOString().split('T')[0];
 
-    // Buscar todas as ofertas válidas e disponíveis (quantity > 0)
+    // ATUALIZADO: Incluir campo image
     const [rows] = await db.execute<RowDataPacket[]>(
       `SELECT 
         o.id, 
@@ -277,6 +316,7 @@ export const getAllOffers = async (req: Request, res: Response, next: NextFuncti
         o.description, 
         o.points, 
         o.quantity,
+        o.image,
         o.valid_until as validUntil,
         u.name as partnerName,
         p.logo_url as partnerLogo,
@@ -314,6 +354,7 @@ export const getAllOffers = async (req: Request, res: Response, next: NextFuncti
         description: offer.description,
         points: offer.points,
         quantity: offer.quantity,
+        image: offer.image,
         validUntil: offer.validUntil
       });
     });

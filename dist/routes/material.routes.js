@@ -1,0 +1,12 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const material_controller_1 = require("../controllers/material.controller");
+const auth_1 = require("../middlewares/auth");
+const router = (0, express_1.Router)();
+router.get('/', material_controller_1.getAllMaterials);
+router.get('/:materialId', material_controller_1.getMaterial);
+router.post('/', auth_1.auth, (0, auth_1.checkUserType)(['admin']), material_controller_1.createMaterial);
+router.patch('/:materialId', auth_1.auth, (0, auth_1.checkUserType)(['admin']), material_controller_1.updateMaterial);
+router.delete('/:materialId', auth_1.auth, (0, auth_1.checkUserType)(['admin']), material_controller_1.deleteMaterial);
+exports.default = router;
