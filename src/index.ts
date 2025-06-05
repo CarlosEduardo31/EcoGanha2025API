@@ -24,8 +24,8 @@ app.get('/', (req, res) => {
 });
 
 
-app.get('/loaderio-*', (req, res) => {
-  const token = req.path.split('-')[1].replace('.txt', '');
+app.get('/loaderio-:token', (req, res) => {
+  const token = req.params.token.replace('.txt', '');
   res.type('text/plain');
   res.send(token);
 });
