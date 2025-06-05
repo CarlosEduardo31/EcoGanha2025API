@@ -23,6 +23,13 @@ app.get('/', (req, res) => {
   res.json({ message: 'API EcoGanha funcionando!' });
 });
 
+
+app.get('/loaderio-*', (req, res) => {
+  const token = req.path.split('-')[1].replace('.txt', '');
+  res.type('text/plain');
+  res.send(token);
+});
+
 // Registrar as rotas da API
 console.log('Registrando rotas da API...');
 app.use('/api', routes);
