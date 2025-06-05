@@ -30,6 +30,12 @@ app.get('/loaderio-:token', (req, res) => {
   res.send(token);
 });
 
+// Adicionar ESTA linha específica para seu token:
+app.get('/loaderio-87e5c853beb95690a4f2d9c02e260ce4.txt', (req, res) => {
+  res.type('text/plain');
+  res.send('87e5c853beb95690a4f2d9c02e260ce4');
+});
+
 // Registrar as rotas da API
 console.log('Registrando rotas da API...');
 app.use('/api', routes);
