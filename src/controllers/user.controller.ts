@@ -10,7 +10,7 @@ export const findUserByPhone = async (req: Request, res: Response, next: NextFun
 
     // Buscar usuário pelo telefone
     const [rows] = await db.execute<RowDataPacket[]>(
-      'SELECT id, name, phone, user_type as userType, points FROM users WHERE phone = ? AND user_type = "comum"',
+      'SELECT id, name, phone, user_type as userType, points, age FROM users WHERE phone = ? AND user_type = "comum"',
       [phone]
     );
 
@@ -35,7 +35,7 @@ export const getProfile = async (req: Request, res: Response, next: NextFunction
 
     // Buscar usuário pelo ID
     const [rows] = await db.execute<RowDataPacket[]>(
-      'SELECT id, name, phone, user_type as userType, points FROM users WHERE id = ?',
+      'SELECT id, name, phone, user_type as userType, points, age FROM users WHERE id = ?',
       [userId]
     );
 
@@ -142,7 +142,7 @@ export const updateProfile = async (req: Request, res: Response, next: NextFunct
 
       // Buscar usuário atualizado
       const [rows] = await db.execute<RowDataPacket[]>(
-        'SELECT id, name, phone, user_type as userType, points FROM users WHERE id = ?',
+        'SELECT id, name, phone, user_type as userType, points, age FROM users WHERE id = ?',
         [userId]
       );
 
@@ -303,7 +303,7 @@ export const getAllUsers = async (req: Request, res: Response, next: NextFunctio
   try {
     // Implementação
     const [rows] = await db.execute<RowDataPacket[]>(
-      'SELECT id, name, phone, user_type as userType, points FROM users'
+      'SELECT id, name, phone, user_type as userType, points, age FROM users'
     );
     
     res.json({
@@ -320,7 +320,7 @@ export const getUserById = async (req: Request, res: Response, next: NextFunctio
     const { id } = req.params;
     
     const [rows] = await db.execute<RowDataPacket[]>(
-      'SELECT id, name, phone, user_type as userType, points FROM users WHERE id = ?',
+      'SELECT id, name, phone, user_type as userType, points, age FROM users WHERE id = ?',
       [id]
     );
     

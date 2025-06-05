@@ -5,18 +5,17 @@ import jwt from 'jsonwebtoken';
 import db from '../db';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
 
-// Login de usuário
+// Login de usuário (sem alterações)
 export const login = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { phone, password } = req.body;
 
-    // Buscar usuário pelo telefone
+    // Buscar usuário pelo telefone - ATUALIZADO para incluir age
     const [rows] = await db.execute<RowDataPacket[]>(
-      'SELECT id, name, phone, password, user_type as userType, points FROM users WHERE phone = ?',
+      'SELECT id, name, phone, password, user_type as userType, points, age FROM users WHERE phone = ?',
       [phone]
     );
 
-    // Verificar se encontrou usuário
     if (rows.length === 0) {
       return res.status(404).json({
         status: 'error',
@@ -26,7 +25,6 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
 
     const user = rows[0];
 
-    // Verificar a senha
     const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       return res.status(401).json({
@@ -35,7 +33,6 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
       });
     }
 
-    // Gerar token JWT - Corrigido
     const secretKey = process.env.JWT_SECRET || 'segredo_temporario';
     const token = jwt.sign(
       { 
@@ -43,16 +40,15 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
         name: user.name,
         phone: user.phone,
         userType: user.userType,
-        points: user.points
+        points: user.points,
+        age: user.age // <- INCLUIR AGE NO TOKEN
       },
       secretKey,
       { expiresIn: '1d' }
     );
 
-    // Remover a senha do objeto do usuário
     delete user.password;
 
-    // Retornar dados do usuário e token
     res.json({
       status: 'success',
       data: {
@@ -65,7 +61,7 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
   }
 };
 
-// Registro de usuário
+// Registro de usuário - ATUALIZADO com idade e consentimento
 export const register = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { 
@@ -73,8 +69,53 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
       phone, 
       password, 
       userType,
+      age, // <- NOVO CAMPO
+      consentGiven, // <- NOVO CAMPO
       address 
     } = req.body;
+
+    // Validações básicas
+    if (!name || !phone || !password || !userType) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'Nome, telefone, senha e tipo de usuário são obrigatórios'
+      });
+    }
+
+    // Validação de idade (apenas para usuários comuns)
+    if (userType === 'comum') {
+      if (!age) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Idade é obrigatória para usuários comuns'
+        });
+      }
+
+      // Validar se idade é um número válido
+      const ageNumber = parseInt(age);
+      if (isNaN(ageNumber) || ageNumber < 1 || ageNumber > 120) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'Idade deve ser um número entre 1 e 120 anos'
+        });
+      }
+
+      // Validação de idade mínima (exemplo: 13 anos para uso da plataforma)
+      if (ageNumber < 13) {
+        return res.status(400).json({
+          status: 'error',
+          message: 'É necessário ter pelo menos 13 anos para usar a plataforma'
+        });
+      }
+    }
+
+    // Validação de consentimento LGPD (obrigatório para todos)
+    if (!consentGiven) {
+      return res.status(400).json({
+        status: 'error',
+        message: 'É necessário aceitar os termos de uso e política de privacidade'
+      });
+    }
 
     // Verificar se já existe um usuário com este telefone
     const [existingUsers] = await db.execute<RowDataPacket[]>(
@@ -89,25 +130,24 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
       });
     }
 
-    // Hash da senha
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Iniciar transação
     await db.query('START TRANSACTION');
 
     try {
-      // Inserir usuário
+      // Inserir usuário - ATUALIZADO para incluir age e consent_given
       const [result] = await db.execute<ResultSetHeader>(
-        'INSERT INTO users (name, phone, password, user_type, points) VALUES (?, ?, ?, ?, ?)',
-        [name, phone, hashedPassword, userType, 0]
+        'INSERT INTO users (name, phone, password, user_type, points, age, consent_given) VALUES (?, ?, ?, ?, ?, ?, ?)',
+        [name, phone, hashedPassword, userType, 0, age || null, consentGiven || false]
       );
 
       const userId = result.insertId;
 
-      // Se forneceu endereço, inserir na tabela de endereços
+      // Se forneceu endereço, inserir na tabela de endereços (SEM campo reference)
       if (address) {
         await db.execute(
-          'INSERT INTO addresses (user_id, street, number, complement, neighborhood, city, state, zip_code, reference) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
+          'INSERT INTO addresses (user_id, street, number, complement, neighborhood, city, state, zip_code) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
           [
             userId,
             address.street || '',
@@ -116,8 +156,7 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
             address.neighborhood || '',
             address.city || '',
             address.state || '',
-            address.zipCode || '',
-            address.reference || ''
+            address.zipCode || ''
           ]
         );
       }
@@ -130,18 +169,16 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
         );
       }
 
-      // Commit da transação
       await db.query('COMMIT');
 
-      // Buscar usuário criado
+      // Buscar usuário criado - ATUALIZADO para incluir age
       const [users] = await db.execute<RowDataPacket[]>(
-        'SELECT id, name, phone, user_type as userType, points FROM users WHERE id = ?',
+        'SELECT id, name, phone, user_type as userType, points, age FROM users WHERE id = ?',
         [userId]
       );
 
       const newUser = users[0];
 
-      // Gerar token JWT - Corrigido
       const secretKey = process.env.JWT_SECRET || 'segredo_temporario';
       const token = jwt.sign(
         { 
@@ -149,13 +186,13 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
           name: newUser.name,
           phone: newUser.phone,
           userType: newUser.userType,
-          points: newUser.points
+          points: newUser.points,
+          age: newUser.age // <- INCLUIR AGE NO TOKEN
         },
         secretKey,
         { expiresIn: '1d' }
       );
 
-      // Retornar dados do usuário e token
       res.status(201).json({
         status: 'success',
         data: {
@@ -164,7 +201,6 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
         }
       });
     } catch (error) {
-      // Rollback em caso de erro
       await db.query('ROLLBACK');
       throw error;
     }
