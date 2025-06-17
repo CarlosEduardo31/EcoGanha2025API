@@ -14,6 +14,7 @@ const router = Router();
 
 router.get('/', getAllEcoPoints);
 
+router.get('/operator', auth, checkUserType(['ecoponto']), getOperatorEcoPoint);
 
 router.get('/:ecoPointId', getEcoPoint);
 
@@ -26,6 +27,5 @@ router.patch('/:ecoPointId', auth, checkUserType(['admin']), updateEcoPoint);
 router.delete('/:ecoPointId', auth, checkUserType(['admin']), deleteEcoPoint);
 
 
-router.get('/operator', auth, checkUserType(['ecoponto']), getOperatorEcoPoint);
 
 export default router;
