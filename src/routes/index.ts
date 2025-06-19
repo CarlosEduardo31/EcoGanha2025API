@@ -7,6 +7,7 @@ import partnerRoutes from './partner.routes';
 import offerRoutes from './offer.routes';
 import transactionRoutes from './transaction.routes';
 import redemptionRoutes from './redemption.routes';
+import configRoutes from './config.routes'; // NOVO IMPORT
 
 const router = Router();
 
@@ -34,6 +35,9 @@ router.use('/transactions', transactionRoutes);
 
 console.log('Registrando rotas: redemptions');
 router.use('/redemptions', redemptionRoutes);
+
+console.log('Registrando rotas: config');
+router.use('/config', configRoutes);
 
 console.log('Todas as rotas registradas com sucesso');
 

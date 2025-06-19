@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import db from '../db';
 import { AppError } from '../utils/appError';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
+import { getCountingMode } from '../services/configService'; // NOVO IMPORT
 
 // Obter ecoponto do operador logado
 export const getOperatorEcoPoint = async (req: Request, res: Response, next: NextFunction) => {
@@ -29,12 +30,13 @@ export const getOperatorEcoPoint = async (req: Request, res: Response, next: Nex
 
     const ecoPoint = rows[0];
 
-    // Buscar os materiais aceitos
+    // Buscar os materiais aceitos (INCLUINDO points_per_unit)
     const [materials] = await db.execute<RowDataPacket[]>(
       `SELECT 
         m.id, 
         m.name,
-        m.points_per_kg as pointsPerKg
+        m.points_per_kg as pointsPerKg,
+        m.points_per_unit as pointsPerUnit
       FROM 
         materials m
         JOIN eco_point_materials epm ON m.id = epm.material_id
@@ -45,9 +47,15 @@ export const getOperatorEcoPoint = async (req: Request, res: Response, next: Nex
 
     ecoPoint.materials = materials;
 
+    // Incluir modo de contagem atual
+    const countingMode = await getCountingMode();
+
     res.json({
       status: 'success',
-      data: ecoPoint
+      data: {
+        ...ecoPoint,
+        counting_mode: countingMode
+      }
     });
   } catch (error) {
     next(error);
@@ -69,13 +77,14 @@ export const getAllEcoPoints = async (req: Request, res: Response, next: NextFun
         eco_points e`
     );
 
-    // Para cada ponto de coleta, buscar os materiais aceitos
+    // Para cada ponto de coleta, buscar os materiais aceitos (INCLUINDO points_per_unit)
     const ecoPoints = await Promise.all(rows.map(async (ecoPoint) => {
       const [materials] = await db.execute<RowDataPacket[]>(
         `SELECT 
           m.id, 
           m.name,
-          m.points_per_kg as pointsPerKg
+          m.points_per_kg as pointsPerKg,
+          m.points_per_unit as pointsPerUnit
         FROM 
           materials m
           JOIN eco_point_materials epm ON m.id = epm.material_id
@@ -90,9 +99,13 @@ export const getAllEcoPoints = async (req: Request, res: Response, next: NextFun
       };
     }));
 
+    // Incluir modo de contagem atual
+    const countingMode = await getCountingMode();
+
     res.json({
       status: 'success',
-      data: ecoPoints
+      data: ecoPoints,
+      counting_mode: countingMode
     });
   } catch (error) {
     next(error);
@@ -124,12 +137,13 @@ export const getEcoPoint = async (req: Request, res: Response, next: NextFunctio
 
     const ecoPoint = rows[0];
 
-    // Buscar os materiais aceitos
+    // Buscar os materiais aceitos (INCLUINDO points_per_unit)
     const [materials] = await db.execute<RowDataPacket[]>(
       `SELECT 
         m.id, 
         m.name,
-        m.points_per_kg as pointsPerKg
+        m.points_per_kg as pointsPerKg,
+        m.points_per_unit as pointsPerUnit
       FROM 
         materials m
         JOIN eco_point_materials epm ON m.id = epm.material_id
@@ -140,9 +154,15 @@ export const getEcoPoint = async (req: Request, res: Response, next: NextFunctio
 
     ecoPoint.materials = materials;
 
+    // Incluir modo de contagem atual
+    const countingMode = await getCountingMode();
+
     res.json({
       status: 'success',
-      data: ecoPoint
+      data: {
+        ...ecoPoint,
+        counting_mode: countingMode
+      }
     });
   } catch (error) {
     next(error);
@@ -198,12 +218,13 @@ export const createEcoPoint = async (req: Request, res: Response, next: NextFunc
         [ecoPointId]
       );
 
-      // Buscar os materiais aceitos
+      // Buscar os materiais aceitos (INCLUINDO points_per_unit)
       const [materialRows] = await db.execute<RowDataPacket[]>(
         `SELECT 
           m.id, 
           m.name,
-          m.points_per_kg as pointsPerKg
+          m.points_per_kg as pointsPerKg,
+          m.points_per_unit as pointsPerUnit
         FROM 
           materials m
           JOIN eco_point_materials epm ON m.id = epm.material_id
@@ -299,12 +320,13 @@ export const updateEcoPoint = async (req: Request, res: Response, next: NextFunc
         [ecoPointId]
       );
 
-      // Buscar os materiais aceitos
+      // Buscar os materiais aceitos (INCLUINDO points_per_unit)
       const [materialRows] = await db.execute<RowDataPacket[]>(
         `SELECT 
           m.id, 
           m.name,
-          m.points_per_kg as pointsPerKg
+          m.points_per_kg as pointsPerKg,
+          m.points_per_unit as pointsPerUnit
         FROM 
           materials m
           JOIN eco_point_materials epm ON m.id = epm.material_id

@@ -6,12 +6,13 @@ import { RowDataPacket, ResultSetHeader } from 'mysql2';
 // Obter todos os materiais
 export const getAllMaterials = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    // Buscar todos os materiais
+    // Buscar todos os materiais (INCLUINDO points_per_unit)
     const [rows] = await db.execute<RowDataPacket[]>(
       `SELECT 
         id, 
         name, 
-        points_per_kg as pointsPerKg
+        points_per_kg as pointsPerKg,
+        points_per_unit as pointsPerUnit
       FROM 
         materials
       ORDER BY 
@@ -32,12 +33,13 @@ export const getMaterial = async (req: Request, res: Response, next: NextFunctio
   try {
     const { materialId } = req.params;
 
-    // Buscar o material
+    // Buscar o material (INCLUINDO points_per_unit)
     const [rows] = await db.execute<RowDataPacket[]>(
       `SELECT 
         id, 
         name, 
-        points_per_kg as pointsPerKg
+        points_per_kg as pointsPerKg,
+        points_per_unit as pointsPerUnit
       FROM 
         materials
       WHERE 
@@ -61,11 +63,11 @@ export const getMaterial = async (req: Request, res: Response, next: NextFunctio
 // Criar novo material (admin)
 export const createMaterial = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { name, pointsPerKg } = req.body;
+    const { name, pointsPerKg, pointsPerUnit } = req.body; // ADICIONADO pointsPerUnit
 
     // Validar se todos os campos necessários foram fornecidos
     if (!name || !pointsPerKg) {
-      throw new AppError('Todos os campos são obrigatórios', 400);
+      throw new AppError('Nome e pontos por kg são obrigatórios', 400);
     }
 
     // Verificar se já existe um material com este nome
@@ -78,20 +80,21 @@ export const createMaterial = async (req: Request, res: Response, next: NextFunc
       throw new AppError('Já existe um material com este nome', 400);
     }
 
-    // Inserir novo material
+    // Inserir novo material (INCLUINDO points_per_unit)
     const [result] = await db.execute<ResultSetHeader>(
-      'INSERT INTO materials (name, points_per_kg) VALUES (?, ?)',
-      [name, pointsPerKg]
+      'INSERT INTO materials (name, points_per_kg, points_per_unit) VALUES (?, ?, ?)',
+      [name, pointsPerKg, pointsPerUnit || 0]
     );
 
     const materialId = result.insertId;
 
-    // Buscar o material criado
+    // Buscar o material criado (INCLUINDO points_per_unit)
     const [materials] = await db.execute<RowDataPacket[]>(
       `SELECT 
         id, 
         name, 
-        points_per_kg as pointsPerKg
+        points_per_kg as pointsPerKg,
+        points_per_unit as pointsPerUnit
       FROM 
         materials
       WHERE 
@@ -112,7 +115,7 @@ export const createMaterial = async (req: Request, res: Response, next: NextFunc
 export const updateMaterial = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { materialId } = req.params;
-    const { name, pointsPerKg } = req.body;
+    const { name, pointsPerKg, pointsPerUnit } = req.body; // ADICIONADO pointsPerUnit
 
     // Verificar se o material existe
     const [existingMaterials] = await db.execute<RowDataPacket[]>(
@@ -136,23 +139,25 @@ export const updateMaterial = async (req: Request, res: Response, next: NextFunc
       }
     }
 
-    // Atualizar material
+    // Atualizar material (INCLUINDO points_per_unit)
     await db.execute(
       `UPDATE materials 
       SET 
         name = ?, 
-        points_per_kg = ? 
+        points_per_kg = ?,
+        points_per_unit = ?
       WHERE 
         id = ?`,
-      [name, pointsPerKg, materialId]
+      [name, pointsPerKg, pointsPerUnit || 0, materialId]
     );
 
-    // Buscar o material atualizado
+    // Buscar o material atualizado (INCLUINDO points_per_unit)
     const [materials] = await db.execute<RowDataPacket[]>(
       `SELECT 
         id, 
         name, 
-        points_per_kg as pointsPerKg
+        points_per_kg as pointsPerKg,
+        points_per_unit as pointsPerUnit
       FROM 
         materials
       WHERE 

@@ -2,16 +2,39 @@ import { Request, Response, NextFunction } from 'express';
 import db from '../db';
 import { AppError } from '../utils/appError';
 import { RowDataPacket, ResultSetHeader } from 'mysql2';
+import { getCountingMode } from '../services/configService'; // NOVO IMPORT
 
 // Adicionar pontos por reciclagem (usado pelos operadores de Eco Ponto)
 export const addRecycleTransaction = async (req: Request, res: Response, next: NextFunction) => {
   try {
     const operatorId = req.user.id;
-    const { userId, materialId, weight, ecoPointId } = req.body;
+    const { userId, materialId, weight, quantity, ecoPointId } = req.body; // ADICIONADO quantity
 
-    // Validar se todos os campos necessários foram fornecidos
-    if (!userId || !materialId || !weight || !ecoPointId) {
-      throw new AppError('Todos os campos são obrigatórios', 400);
+    // 🔍 DEBUG - ADICIONE ESTAS LINHAS TEMPORARIAMENTE (remover depois)
+    console.log('🔍 DEBUG INFO:');
+    console.log('Operator ID do token:', operatorId);
+    console.log('EcoPoint ID da requisição:', ecoPointId);
+    console.log('User do token completo:', req.user);
+
+    // Obter modo de contagem atual
+    const countingMode = await getCountingMode(); // NOVO
+    console.log('🔧 Modo de contagem atual:', countingMode);
+
+    // Validação baseada no modo de contagem
+    if (countingMode === 'weight') {
+      if (!userId || !materialId || !weight || !ecoPointId) {
+        throw new AppError('Todos os campos são obrigatórios (modo peso: userId, materialId, weight, ecoPointId)', 400);
+      }
+      if (weight <= 0) {
+        throw new AppError('Peso deve ser maior que zero', 400);
+      }
+    } else {
+      if (!userId || !materialId || !quantity || !ecoPointId) {
+        throw new AppError('Todos os campos são obrigatórios (modo unidade: userId, materialId, quantity, ecoPointId)', 400);
+      }
+      if (quantity <= 0) {
+        throw new AppError('Quantidade deve ser maior que zero', 400);
+      }
     }
 
     // Validar se operador está associado ao eco ponto
@@ -34,9 +57,11 @@ export const addRecycleTransaction = async (req: Request, res: Response, next: N
       throw new AppError('Este Eco Ponto não aceita este material', 400);
     }
 
-    // Buscar o valor em pontos do material
+    // Buscar pontos do material baseado no modo de contagem
     const [materialRows] = await db.execute<RowDataPacket[]>(
-      'SELECT points_per_kg FROM materials WHERE id = ?',
+      countingMode === 'weight' 
+        ? 'SELECT points_per_kg, points_per_unit FROM materials WHERE id = ?'
+        : 'SELECT points_per_kg, points_per_unit FROM materials WHERE id = ?',
       [materialId]
     );
 
@@ -44,17 +69,30 @@ export const addRecycleTransaction = async (req: Request, res: Response, next: N
       throw new AppError('Material não encontrado', 404);
     }
 
-    const pointsPerKg = materialRows[0].points_per_kg;
-    const points = Math.round(weight * pointsPerKg);
+    // Calcular pontos baseado no modo
+    let points: number;
+    if (countingMode === 'weight') {
+      const pointsPerKg = materialRows[0].points_per_kg;
+      if (!pointsPerKg) {
+        throw new AppError('Material não tem pontos por kg configurado', 400);
+      }
+      points = Math.round(weight * pointsPerKg);
+    } else {
+      const pointsPerUnit = materialRows[0].points_per_unit;
+      if (!pointsPerUnit) {
+        throw new AppError('Material não tem pontos por unidade configurado', 400);
+      }
+      points = quantity * pointsPerUnit;
+    }
 
     // Iniciar transação
     await db.query('START TRANSACTION');
 
     try {
-      // Registrar a transação de reciclagem
+      // Registrar a transação de reciclagem (DUAL MODE - salva weight E quantity)
       const [result] = await db.execute<ResultSetHeader>(
-        'INSERT INTO recycle_transactions (user_id, eco_point_id, material_id, weight, points) VALUES (?, ?, ?, ?, ?)',
-        [userId, ecoPointId, materialId, weight, points]
+        'INSERT INTO recycle_transactions (user_id, eco_point_id, material_id, weight, quantity, points) VALUES (?, ?, ?, ?, ?, ?)',
+        [userId, ecoPointId, materialId, weight || 0, quantity || 0, points]
       );
 
       const transactionId = result.insertId;
@@ -78,6 +116,7 @@ export const addRecycleTransaction = async (req: Request, res: Response, next: N
         `SELECT 
           t.id, 
           t.weight, 
+          t.quantity,
           t.points, 
           t.created_at as date, 
           m.name as materialName, 
@@ -95,7 +134,8 @@ export const addRecycleTransaction = async (req: Request, res: Response, next: N
         status: 'success',
         data: {
           transaction: transactionRows[0],
-          user: userRows[0]
+          user: userRows[0],
+          counting_mode: countingMode // Retornar modo usado
         }
       });
     } catch (error) {
@@ -124,11 +164,12 @@ export const getEcoPointTransactions = async (req: Request, res: Response, next:
       throw new AppError('Operador não autorizado para este Eco Ponto', 403);
     }
 
-    // Buscar transações do eco ponto
+    // Buscar transações do eco ponto (INCLUINDO quantity)
     const [rows] = await db.execute<RowDataPacket[]>(
       `SELECT 
         t.id, 
         t.weight, 
+        t.quantity,
         t.points, 
         t.created_at as date, 
         m.name as materialName,
@@ -145,9 +186,13 @@ export const getEcoPointTransactions = async (req: Request, res: Response, next:
       [ecoPointId]
     );
 
+    // Incluir modo de contagem atual na resposta
+    const countingMode = await getCountingMode();
+
     res.json({
       status: 'success',
-      data: rows
+      data: rows,
+      counting_mode: countingMode
     });
   } catch (error) {
     next(error);
@@ -170,12 +215,15 @@ export const getEcoPointStats = async (req: Request, res: Response, next: NextFu
       throw new AppError('Operador não autorizado para este Eco Ponto', 403);
     }
 
+    const countingMode = await getCountingMode();
+
     // Buscar estatísticas do dia atual
     const today = new Date().toISOString().split('T')[0];
     
-    // Total reciclado hoje
+    // Total reciclado hoje (baseado no modo)
+    const totalColumn = countingMode === 'weight' ? 'weight' : 'quantity';
     const [totalToday] = await db.execute<RowDataPacket[]>(
-      `SELECT SUM(weight) as totalWeight 
+      `SELECT SUM(${totalColumn}) as totalAmount 
       FROM recycle_transactions 
       WHERE eco_point_id = ? AND DATE(created_at) = ?`,
       [ecoPointId, today]
@@ -199,12 +247,12 @@ export const getEcoPointStats = async (req: Request, res: Response, next: NextFu
 
     // Material mais reciclado (total)
     const [topMaterial] = await db.execute<RowDataPacket[]>(
-      `SELECT m.name, SUM(t.weight) as totalWeight
+      `SELECT m.name, SUM(t.${totalColumn}) as totalAmount
       FROM recycle_transactions t
       JOIN materials m ON t.material_id = m.id
       WHERE t.eco_point_id = ?
       GROUP BY t.material_id
-      ORDER BY totalWeight DESC
+      ORDER BY totalAmount DESC
       LIMIT 1`,
       [ecoPointId]
     );
@@ -213,9 +261,9 @@ export const getEcoPointStats = async (req: Request, res: Response, next: NextFu
     const [materialDistribution] = await db.execute<RowDataPacket[]>(
       `SELECT 
         m.name, 
-        SUM(t.weight) as totalWeight,
-        ROUND((SUM(t.weight) / (
-          SELECT SUM(weight) 
+        SUM(t.${totalColumn}) as totalAmount,
+        ROUND((SUM(t.${totalColumn}) / (
+          SELECT SUM(${totalColumn}) 
           FROM recycle_transactions 
           WHERE eco_point_id = ?
         )) * 100, 1) as percentage
@@ -227,18 +275,20 @@ export const getEcoPointStats = async (req: Request, res: Response, next: NextFu
       GROUP BY 
         t.material_id
       ORDER BY 
-        totalWeight DESC`,
+        totalAmount DESC`,
       [ecoPointId, ecoPointId]
     );
 
     res.json({
       status: 'success',
       data: {
-        totalRecycledToday: totalToday[0].totalWeight || 0,
+        totalRecycledToday: totalToday[0].totalAmount || 0,
         pointsDistributed: pointsToday[0].totalPoints || 0,
         usersServed: usersToday[0].userCount || 0,
         mostRecycledMaterial: topMaterial.length > 0 ? topMaterial[0].name : null,
-        materialDistribution
+        materialDistribution,
+        counting_mode: countingMode,
+        unit_label: countingMode === 'weight' ? 'kg' : 'unidades'
       }
     });
   } catch (error) {
