@@ -139,7 +139,7 @@ export const register = async (req: Request, res: Response, next: NextFunction) 
       // Inserir usuário - ATUALIZADO para incluir age e consent_given
       const [result] = await db.execute<ResultSetHeader>(
         'INSERT INTO users (name, phone, password, user_type, points, age, consent_given) VALUES (?, ?, ?, ?, ?, ?, ?)',
-        [name, phone, hashedPassword, userType, 0, age || null, consentGiven || false]
+        [name, phone, hashedPassword, userType, 1, age || null, consentGiven || false]
       );
 
       const userId = result.insertId;
